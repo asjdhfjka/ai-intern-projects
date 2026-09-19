@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 聊天助手</title>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding-top: 50px; }
+        #chat-box { width: 500px; height: 600px; background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
+        #messages { flex: 1; padding: 20px; overflow-y: auto; }
+        .msg { margin-bottom: 15px; padding: 10px 15px; border-radius: 10px; max-width: 80%; word-wrap: break-word; }
+        .user { background: #007bff; color: white; align-self: flex-end; margin-left: auto; }
+        .bot { background: #e9ecef; color: #333; }
+        .input-area { display: flex; padding: 15px; border-top: 1px solid #ddd; }
+        input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; outline: none; }
+        button { margin-left: 10px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        button:disabled { background: #aaa; }
+    </style>
+</head>
+<body>
+    <div id="chat-box">
+        <div id="messages">
+            <div class="msg bot">你好！我是你的 AI 助手，有什么可以帮你的？</div>
+        </div>
+        <div class="input-area">
+            <input type="text" id="user-input" placeholder="输入你的问题..." />
+            <button id="send-btn" onclick="sendMessage()">发送</button>
+        </div>
+    </div>
+
+    <script>
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const sendBtn = document.getElementById('send-btn');
+            const messages = document.getElementById('messages');
+            const text = input.value.trim();
+            if (!text) return;
+
+            // 1. 显示用户消息
+            messages.innerHTML += `<div class="msg user">${text}</div>`;
+            input.value = '';
+            input.disabled = true;
+            sendBtn.disabled = true;
+
+            // 2. 创建 AI 回复的容器
+            const botMsgDiv = document.createElement('div');
+            botMsgDiv.className = 'msg bot';
+            botMsgDiv.innerText = '思考中...';
+            messages.appendChild(botMsgDiv);
+            messages.scrollTop = messages.scrollHeight;
+
+            try {
+                // 3. 发送请求，接收流式响应
+                const response = await fetch(`/chat/stream?user_input=${encodeURIComponent(text)}`, {
+                    method: 'POST'
+                });
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder('utf-8');
+                botMsgDiv.innerText = ''; // 清空“思考中”
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    // 将流数据解码并追加到界面
+                    const chunk = decoder.decode(value, { stream: true });
+                    botMsgDiv.innerText += chunk;
+                    messages.scrollTop = messages.scrollHeight; // 自动滚动到底部
+                }
+            } catch (error) {
+                botMsgDiv.innerText = '网络错误，请稍后重试。';
+            } finally {
+                input.disabled = false;
+                sendBtn.disabled = false;
+                input.focus();
+            }
+        }
+
+        // 支持回车键发送
+        document.getElementById('user-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>
