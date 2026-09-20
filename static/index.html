@@ -24,10 +24,39 @@
         <div class="input-area">
             <input type="text" id="user-input" placeholder="输入你的问题..." />
             <button id="send-btn" onclick="sendMessage()">发送</button>
+            <input type="file" id="file-upload" style="display: none;" onchange="uploadFile()" accept=".pdf,.txt">
+            <button onclick="document.getElementById('file-upload').click()" title="上传文档" style="background: #28a745; margin-left: 0; margin-right: 10px;">📎</button>
         </div>
     </div>
 
     <script>
+        async function uploadFile() {
+            const fileInput = document.getElementById('file-upload');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const messages = document.getElementById('messages');
+            messages.innerHTML += `<div class="msg user">正在上传文件：${file.name}...</div>`;
+            messages.scrollTop = messages.scrollHeight;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                messages.innerHTML += `<div class="msg bot">${data.message || data.error}</div>`;
+                messages.scrollTop = messages.scrollHeight;
+            } catch (error) {
+                messages.innerHTML += `<div class="msg bot">上传失败，请重试。</div>`;
+            } finally {
+                fileInput.value = ''; // 清空选择
+            }
+        }
         async function sendMessage() {
             const input = document.getElementById('user-input');
             const sendBtn = document.getElementById('send-btn');

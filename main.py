@@ -7,6 +7,11 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
+from fastapi import UploadFile, File
+import shutil
+import os
+from langchain_community.document_loaders import PyPDFLoader, TextLoader
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 # 1. 读取 .env 文件里的密钥
 load_dotenv()
 
@@ -68,4 +73,41 @@ async def chat_stream(user_input: str):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 # 挂载静态文件夹，让 / 路径直接显示 index.html
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    # 1. 保存上传的文件到本地
+    file_location = f"./temp_{file.filename}"
+    with open(file_location, "wb+") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    try:
+        # 2. 根据文件类型加载文档
+        if file.filename.endswith(".pdf"):
+            loader = PyPDFLoader(file_location)
+        elif file.filename.endswith(".txt"):
+            loader = TextLoader(file_location, encoding="utf-8")
+        else:
+            return {"error": "仅支持 PDF 和 TXT 文件"}
+
+        documents = loader.load()
+
+        # 3. 切分文本
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500,
+            chunk_overlap=50,
+            length_function=len
+        )
+        chunks = text_splitter.split_documents(documents)
+
+        # 4. 存入现有的向量数据库（增量添加！）
+        if chunks:
+            vector_db.add_documents(chunks)
+            return {"message": f"✅ 上传成功，已添加 {len(chunks)} 个文本片段到知识库"}
+        else:
+            return {"message": "文件内容为空，未添加片段"}
+
+    finally:
+        # 5. 删除临时文件
+        if os.path.exists(file_location):
+            os.remove(file_location)
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
