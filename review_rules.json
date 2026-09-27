@@ -1,0 +1,49 @@
+{
+  "rules": [
+    {
+      "id": "R001",
+      "name": "学号必须为 10 位数字",
+      "type": "regex",
+      "field": "学号",
+      "pattern": "^\\d{10}$",
+      "severity": "error",
+      "message": "学号格式不正确，应为 10 位数字"
+    },
+    {
+      "id": "R002",
+      "name": "必须包含姓名",
+      "type": "required",
+      "field": "姓名",
+      "severity": "error",
+      "message": "材料中未找到姓名信息"
+    },
+    {
+      "id": "R003",
+      "name": "必须包含学院盖章",
+      "type": "keyword",
+      "field": "正文",
+      "keywords": ["盖章", "公章", "院章"],
+      "severity": "error",
+      "message": "材料中未见学院盖章"
+    },
+    {
+      "id": "R004",
+      "name": "日期格式必须为 YYYY-MM-DD",
+      "type": "regex",
+      "field": "日期",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "severity": "warning",
+      "message": "日期格式不规范"
+    },
+    {
+      "id": "R005",
+      "name": "绩点不得低于 2.0",
+      "type": "range",
+      "field": "绩点",
+      "min": 2.0,
+      "max": 5.0,
+      "severity": "error",
+      "message": "绩点不符合申请条件"
+    }
+  ]
+}

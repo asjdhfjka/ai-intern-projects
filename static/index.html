@@ -2,6 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <title>AI 聊天助手</title>
     <style>
         body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding-top: 50px; }
@@ -24,12 +26,143 @@
         <div class="input-area">
             <input type="text" id="user-input" placeholder="输入你的问题..." />
             <button id="send-btn" onclick="sendMessage()">发送</button>
-            <input type="file" id="file-upload" style="display: none;" onchange="uploadFile()" accept=".pdf,.txt">
-            <button onclick="document.getElementById('file-upload').click()" title="上传文档" style="background: #28a745; margin-left: 0; margin-right: 10px;">📎</button>
+            <input type="file" id="file-upload" style="display: none;" onchange="uploadFile()" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg">
+            <button onclick="document.getElementById('file-upload').click()" title="上传文档" style="background: #28a745; margin-left: 0; margin-right: 10px;">📎文件上传</button>
+            <button onclick="document.getElementById('review-upload').click()" style="background: #6f42c1;">📋 材料审查</button>
+            <input type="file" id="review-upload" style="display: none;" onchange="reviewFile()" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg">
+            <button onclick="clearChat()" style="background: #dc3545;">🗑️ 清空对话</button>
         </div>
     </div>
 
     <script>
+        function clearChat() {
+            document.getElementById('messages').innerHTML = `
+                <div class="msg bot">你好！我是你的 AI 助手，有什么可以帮你的？</div>
+            `;
+        }
+                async function reviewFile() {
+            const fileInput = document.getElementById('review-upload');
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            const messages = document.getElementById('messages');
+            messages.innerHTML += `<div class="msg user">正在审查文件：${file.name}...</div>`;
+            messages.scrollTop = messages.scrollHeight;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // 创建审查结果容器
+            const reviewDiv = document.createElement('div');
+            reviewDiv.className = 'msg bot';
+            reviewDiv.innerHTML = '🔍 <i>正在多维度审查中...</i>';
+            messages.appendChild(reviewDiv);
+            messages.scrollTop = messages.scrollHeight;
+
+            try {
+                const response = await fetch('/review', { method: 'POST', body: formData });
+                const data = await response.json();
+
+                console.log("审查返回数据:", data);  // ⭐ 调试用，看看返回结构
+
+                if (!data.review_result) {
+                    reviewDiv.innerHTML = `❌ 审查失败：${data.error || '返回数据异常'}`;
+                    return;
+                }
+
+                const r = data.review_result;
+
+                // 兼容旧版纯文本格式
+                if (typeof r === 'string') {
+                    reviewDiv.innerHTML = marked.parse(r);
+                    return;
+                }
+
+                // ========== 新版结构化报告渲染 ==========
+                let html = `<h3 style="margin:0 0 15px 0;">📋 审查报告</h3>`;
+
+                // 总评分卡片
+                const gradeColor = {
+                    '优秀': '#28a745',
+                    '合格': '#17a2b8',
+                    '需修改': '#ffc107',
+                    '不合格': '#dc3545'
+                }[r.等级] || '#6c757d';
+
+                html += `<div style="background:${gradeColor}; color:white; padding:15px; border-radius:8px; margin-bottom:15px; text-align:center;">
+                    <div style="font-size:32px; font-weight:bold;">${r.总评分}<span style="font-size:16px;">/100</span></div>
+                    <div style="font-size:14px; margin-top:5px;">等级：${r.等级} · 材料类型：${r.材料类型 || '通用'}</div>
+                </div>`;
+
+                // 硬规则校验结果
+                if (r.硬规则校验 && r.硬规则校验.length > 0) {
+                    const errorRules = r.硬规则校验.filter(x => !x.passed && x.severity === 'error');
+                    const warningRules = r.硬规则校验.filter(x => !x.passed && x.severity === 'warning');
+                    const passedRules = r.硬规则校验.filter(x => x.passed);
+
+                    html += `<div style="margin-bottom:10px; font-size:13px; color:#666;">
+                        ⚙️ 硬规则（${r.硬规则得分}/100）：❌ ${errorRules.length} · ⚠️ ${warningRules.length} · ✅ ${passedRules.length}
+                    </div>`;
+
+                    errorRules.forEach(rule => {
+                        html += `<div style="padding:8px; margin:5px 0; background:#f8d7da; border-left:3px solid #dc3545; font-size:13px;">
+                            <b>❌ ${rule.rule_name}</b>
+                            <div style="color:#721c24; margin-top:3px;">→ ${rule.message}</div>
+                        </div>`;
+                    });
+
+                    warningRules.forEach(rule => {
+                        html += `<div style="padding:8px; margin:5px 0; background:#fff3cd; border-left:3px solid #ffc107; font-size:13px;">
+                            <b>⚠️ ${rule.rule_name}</b>
+                            <div style="color:#856404; margin-top:3px;">→ ${rule.message}</div>
+                        </div>`;
+                    });
+
+                    // 通过的规则折叠
+                    if (passedRules.length > 0) {
+                        html += `<details style="margin-top:10px; font-size:12px;">
+                            <summary style="cursor:pointer; color:#28a745;">✅ 已通过的规则（${passedRules.length} 项，点击展开）</summary>
+                            <div style="margin-top:5px;">
+                                ${passedRules.map(x => `<div style="padding:3px 10px; color:#666;">✓ ${x.rule_name}</div>`).join('')}
+                            </div>
+                        </details>`;
+                    }
+                }
+
+                // 软审查结果
+                if (r.软审查) {
+                    html += `<div style="margin-top:15px;"><b>🧠 软审查</b></div>`;
+
+                    if (r.软审查.表述规范性) {
+                        html += `<div style="padding:8px; margin:5px 0; background:#f8f9fa; font-size:13px;">
+                            <b>表述规范性：${r.软审查.表述规范性.评分}/100</b>
+                            ${r.软审查.表述规范性.问题 && r.软审查.表述规范性.问题.length
+                                ? `<ul style="margin:5px 0 0 20px; padding:0;">${r.软审查.表述规范性.问题.map(p => `<li>${p}</li>`).join('')}</ul>`
+                                : '<div style="color:#28a745; margin-top:3px;">✓ 无问题</div>'}
+                        </div>`;
+                    }
+
+                    if (r.软审查.逻辑一致性) {
+                        html += `<div style="padding:8px; margin:5px 0; background:#f8f9fa; font-size:13px;">
+                            <b>逻辑一致性：${r.软审查.逻辑一致性.评分}/100</b>
+                            ${r.软审查.逻辑一致性.问题 && r.软审查.逻辑一致性.问题.length
+                                ? `<ul style="margin:5px 0 0 20px; padding:0;">${r.软审查.逻辑一致性.问题.map(p => `<li>${p}</li>`).join('')}</ul>`
+                                : '<div style="color:#28a745; margin-top:3px;">✓ 无问题</div>'}
+                        </div>`;
+                    }
+                }
+
+                reviewDiv.innerHTML = html;
+
+            } catch (error) {
+                console.error("审查错误:", error);
+                reviewDiv.innerHTML = '❌ 审查失败，请重试。';
+            } finally {
+                fileInput.value = '';
+                messages.scrollTop = messages.scrollHeight;
+            }
+        }
+
         async function uploadFile() {
             const fileInput = document.getElementById('file-upload');
             const file = fileInput.files[0];
@@ -49,14 +182,16 @@
                 });
                 const data = await response.json();
 
-                messages.innerHTML += `<div class="msg bot">${data.message || data.error}</div>`;
+                // 用 marked 渲染，支持 Markdown 格式的提示信息（规则抽取提示可能有换行）
+                messages.innerHTML += `<div class="msg bot">${marked.parse(data.message || data.error)}</div>`;
                 messages.scrollTop = messages.scrollHeight;
             } catch (error) {
                 messages.innerHTML += `<div class="msg bot">上传失败，请重试。</div>`;
             } finally {
-                fileInput.value = ''; // 清空选择
+                fileInput.value = '';
             }
         }
+
         async function sendMessage() {
             const input = document.getElementById('user-input');
             const sendBtn = document.getElementById('send-btn');
@@ -69,41 +204,155 @@
             input.value = '';
             input.disabled = true;
             sendBtn.disabled = true;
+            sendBtn.innerText = '思考中...';
 
             // 2. 创建 AI 回复的容器
             const botMsgDiv = document.createElement('div');
             botMsgDiv.className = 'msg bot';
-            botMsgDiv.innerText = '思考中...';
+            botMsgDiv.innerHTML = '🔍 <i>正在理解你的问题并检索知识库...</i>';
             messages.appendChild(botMsgDiv);
             messages.scrollTop = messages.scrollHeight;
 
+            let sourcesData = [];
+            let buffer = '';
+            let accumulatedText = '';
+            let isParsedSources = false;
+
             try {
-                // 3. 发送请求，接收流式响应
-                const response = await fetch(`/chat/stream?user_input=${encodeURIComponent(text)}`, {
+                // 抓取最近两轮（4条消息）的文本作为历史
+                                // ⭐ 抓取历史时，过滤掉拒答废话，且严格限制长度
+                const allMessages = Array.from(document.querySelectorAll('.msg'))
+                    .filter(m => !m.innerText.includes('思考中...') && !m.innerText.includes('正在理解你的问题'))
+                    .slice(-4); // 只取最近4条有效消息
+                const chatHistory = allMessages.map(m => {
+                    let t = m.innerText;
+                    // 剥离来源列表和拒答后缀
+                    if (t.includes('📎 参考来源')) t = t.split('📎 参考来源')[0];
+                    if (t.includes('📎 检索到的相关材料')) t = t.split('📎 检索到的相关材料')[0];
+                    if (t.includes('您可以参考下方我为您检索到的相关材料')) t = t.split('您可以参考下方我为您检索到的相关材料')[0];
+                    // 限制每条消息 200 字，防止历史过长
+                    return t.substring(0, 200);
+                }).join('\n---\n');
+
+                const response = await fetch(`/chat/stream?user_input=${encodeURIComponent(text)}&history=${encodeURIComponent(chatHistory)}`, {
                     method: 'POST'
                 });
+
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder('utf-8');
-                botMsgDiv.innerText = ''; // 清空“思考中”
+                botMsgDiv.innerText = '';
 
-                while (true) {
+                   while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-                    // 将流数据解码并追加到界面
+
                     const chunk = decoder.decode(value, { stream: true });
-                    botMsgDiv.innerText += chunk;
-                    messages.scrollTop = messages.scrollHeight; // 自动滚动到底部
+                    buffer += chunk;
+
+                    // 1. 解析来源标记（保持不变）
+                    if (!isParsedSources) {
+                        if (buffer.includes('__END__')) {
+                            const startIdx = buffer.indexOf('__SOURCES__') + 11;
+                            const endIdx = buffer.indexOf('__END__');
+                            try {
+                                sourcesData = JSON.parse(buffer.slice(startIdx, endIdx));
+                                buffer = buffer.slice(endIdx + 7);
+                            } catch (e) { console.error("解析来源失败", e); }
+                            isParsedSources = true;
+                        } else if (buffer.includes('__SOURCES__')) {
+                            continue;
+                        } else {
+                            isParsedSources = true;
+                        }
+                    }
+
+                    // 2. ⭐ 修复：先累加，再替换，最后渲染
+                    if (buffer) {
+                        accumulatedText += buffer; // ⭐ 这行是命根子，千万不能漏！
+
+                        // 把 [来源X] 替换成超链接（加上 source && source.url 安全判断）
+                        let renderedText = accumulatedText.replace(/\[来源(\d+)\]/g, (match, num) => {
+                            const source = sourcesData[parseInt(num) - 1];
+                            if (source && source.url) { // ⭐ 确保 source 存在
+                                return `<a href="${source.url}" target="_blank" style="color:#007bff;">[来源${num}]</a>`;
+                            }
+                            return match; // 找不到就保持原样，避免报错
+                        });
+
+                        // 只有渲染后的内容非空时，才更新 DOM，防止清空
+                        if (renderedText.trim()) {
+                            botMsgDiv.innerHTML = marked.parse(renderedText);
+                        }
+
+                        if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 100) {
+                            messages.scrollTop = messages.scrollHeight;
+                        }
+                        buffer = ''; // 最后才清空 buffer
+                    }
                 }
+
+                // 3. 循环结束后的兜底渲染（同样加安全判断）
+                if (buffer) {
+                    accumulatedText += buffer;
+                    let renderedText = accumulatedText.replace(/\[来源(\d+)\]/g, (match, num) => {
+                        const source = sourcesData[parseInt(num) - 1];
+                        if (source && source.url) {
+                            return `<a href="${source.url}" target="_blank" style="color:#007bff;">[来源${num}]</a>`;
+                        }
+                        return match;
+                    });
+                    if (renderedText.trim()) {
+                        botMsgDiv.innerHTML = marked.parse(renderedText);
+                    }
+                }
+
+                if (sourcesData.length > 0) {
+                    // 1. 提取正文里实际引用的来源编号
+                    const usedSourceIndices = new Set();
+                    const matches = accumulatedText.matchAll(/\[来源(\d+)\]/g);
+                    for (const match of matches) {
+                        usedSourceIndices.add(parseInt(match[1]));
+                    }
+
+                    // 2. 过滤出被引用的来源
+                    let finalSources = sourcesData.filter(s => usedSourceIndices.has(s.index));
+
+                    // ⭐ 核心修改：如果正文里一个都没引用（拒答场景），就展示前3个检索到的材料作为“参考”
+                    if (finalSources.length === 0) {
+                        finalSources = sourcesData.slice(0, 3);
+                    }
+
+                    // 3. 渲染来源列表
+                    const sourcesDiv = document.createElement('div');
+                    sourcesDiv.style.marginTop = '10px';
+                    sourcesDiv.style.paddingTop = '10px';
+                    sourcesDiv.style.borderTop = '1px dashed #ccc';
+                    sourcesDiv.style.fontSize = '12px';
+                    sourcesDiv.innerHTML = '<b>📎 检索到的相关材料：</b><br>' +
+                    finalSources.map(s => {
+                        const isLocalFile = s.url.startsWith('/preview/');
+                        const icon = isLocalFile ? '📄' : '🔗';
+                        let finalUrl = s.url;
+                        if (isLocalFile) {
+                            const fileName = s.url.replace('/preview/', '');
+                            finalUrl = `/preview/${encodeURIComponent(fileName)}`;
+                        }
+                        return `<a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration: none; margin-right: 5px;">${icon} [来源${s.index}] ${s.title}</a>`;
+                    }).join('<br>');
+                    botMsgDiv.appendChild(sourcesDiv);
+                }
+
             } catch (error) {
-                botMsgDiv.innerText = '网络错误，请稍后重试。';
+                console.error("流式读取错误:", error);
+                botMsgDiv.innerText = '网络错误或连接被代理拦截，请稍后重试。';
             } finally {
                 input.disabled = false;
                 sendBtn.disabled = false;
+                sendBtn.innerText = '发送';
                 input.focus();
             }
         }
 
-        // 支持回车键发送
         document.getElementById('user-input').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') sendMessage();
         });
