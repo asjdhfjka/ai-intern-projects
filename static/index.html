@@ -4,43 +4,372 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <title>AI 聊天助手</title>
+    <title>工大智政 · AI 助手</title>
     <style>
-        body { font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding-top: 50px; }
-        #chat-box { width: 500px; height: 600px; background: white; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow: hidden; }
-        #messages { flex: 1; padding: 20px; overflow-y: auto; }
-        .msg { margin-bottom: 15px; padding: 10px 15px; border-radius: 10px; max-width: 80%; word-wrap: break-word; }
-        .user { background: #007bff; color: white; align-self: flex-end; margin-left: auto; }
-        .bot { background: #e9ecef; color: #333; }
-        .input-area { display: flex; padding: 15px; border-top: 1px solid #ddd; }
-        input { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 5px; outline: none; }
-        button { margin-left: 10px; padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-        button:disabled { background: #aaa; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+        }
+
+        #chat-box {
+            width: 100%;
+            max-width: 720px;
+            height: 85vh;
+            max-height: 850px;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* ===== 顶部标题栏 ===== */
+        .header {
+            padding: 18px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .header-icon {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+        .header-title {
+            font-size: 17px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .header-subtitle {
+            font-size: 12px;
+            opacity: 0.85;
+            margin-top: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .online-dot {
+            width: 7px;
+            height: 7px;
+            background: #4ade80;
+            border-radius: 50%;
+            box-shadow: 0 0 8px #4ade80;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .header-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .icon-btn {
+            width: 36px;
+            height: 36px;
+            background: rgba(255, 255, 255, 0.15);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .icon-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* ===== 消息区 ===== */
+        #messages {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            background: #f8f9fc;
+            scroll-behavior: smooth;
+        }
+        #messages::-webkit-scrollbar { width: 8px; }
+        #messages::-webkit-scrollbar-track { background: transparent; }
+        #messages::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        #messages::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .msg {
+            margin-bottom: 20px;
+            padding: 14px 18px;
+            border-radius: 16px;
+            max-width: 82%;
+            word-wrap: break-word;
+            line-height: 1.6;
+            font-size: 14.5px;
+            animation: slideIn 0.3s ease-out;
+            position: relative;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .user {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .bot {
+            background: white;
+            color: #1e293b;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            border: 1px solid #e2e8f0;
+        }
+
+        /* AI 消息里的 Markdown 样式 */
+        .bot h3 { font-size: 15px; margin: 10px 0 8px; color: #334155; }
+        .bot p { margin: 6px 0; }
+        .bot ul, .bot ol { margin: 6px 0 6px 20px; }
+        .bot li { margin: 3px 0; }
+        .bot strong { color: #4f46e5; }
+        .bot code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #db2777;
+        }
+        .bot a {
+            color: #4f46e5;
+            text-decoration: none;
+            border-bottom: 1px dashed #4f46e5;
+        }
+        .bot a:hover { border-bottom-style: solid; }
+
+        /* ===== 输入区 ===== */
+        .input-area {
+            padding: 16px 20px;
+            background: white;
+            border-top: 1px solid #e2e8f0;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        #user-input {
+            flex: 1;
+            padding: 12px 18px;
+            border: 2px solid #e2e8f0;
+            border-radius: 24px;
+            outline: none;
+            font-size: 14.5px;
+            font-family: inherit;
+            transition: all 0.2s;
+            background: #f8f9fc;
+        }
+        #user-input:focus {
+            border-color: #667eea;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            padding: 12px 22px;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            font-family: inherit;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            white-space: nowrap;
+        }
+        .btn:hover:not(:disabled) { transform: translateY(-2px); }
+        .btn:active:not(:disabled) { transform: translateY(0); }
+
+        #send-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        #send-btn:hover:not(:disabled) {
+            box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+        }
+        #send-btn:disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border-radius: 50%;
+            justify-content: center;
+            font-size: 18px;
+        }
+        .btn-upload {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+        .btn-review {
+            background: linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+        }
+
+        /* ===== 打字机光标 ===== */
+        .typing-cursor::after {
+            content: '▋';
+            color: #667eea;
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        /* ===== 来源列表 ===== */
+        .sources {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px dashed #cbd5e1;
+            font-size: 12.5px;
+            line-height: 1.8;
+        }
+        .sources a {
+            display: inline-block;
+            margin-right: 8px;
+            padding: 2px 8px;
+            background: #eff6ff;
+            border-radius: 6px;
+            border-bottom: none;
+            transition: all 0.2s;
+        }
+        .sources a:hover {
+            background: #dbeafe;
+            transform: translateX(2px);
+        }
+
+        /* ===== 响应式 ===== */
+        @media (max-width: 600px) {
+            body { padding: 0; }
+            #chat-box {
+                height: 100vh;
+                max-height: 100vh;
+                border-radius: 0;
+                max-width: 100%;
+            }
+            .msg { max-width: 90%; }
+            .btn-secondary { width: 40px; height: 40px; }
+            .header-title { font-size: 15px; }
+        }
+
+        /* ===== 加载动画 ===== */
+        .loading-dots {
+            display: inline-flex;
+            gap: 4px;
+            align-items: center;
+        }
+        .loading-dots span {
+            width: 6px;
+            height: 6px;
+            background: #667eea;
+            border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .loading-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .loading-dots span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
     <div id="chat-box">
-        <div id="messages">
-            <div class="msg bot">你好！我是你的 AI 助手，有什么可以帮你的？</div>
+        <!-- 顶部标题栏 -->
+        <div class="header">
+            <div class="header-left">
+                <div class="header-icon">🎓</div>
+                <div>
+                    <div class="header-title">工大智政 · AI 助手</div>
+                    <div class="header-subtitle">
+                        <span class="online-dot"></span>
+                        <span>在线 · 基于本地知识库</span>
+                    </div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <button class="icon-btn" onclick="clearChat()" title="清空对话">🗑️</button>
+            </div>
         </div>
+
+        <!-- 消息区 -->
+        <div id="messages">
+            <div class="msg bot">你好！我是工大智政 AI 助手 👋<br>我可以帮你查询学校的通知公告，也可以审查材料。有什么可以帮你的？</div>
+        </div>
+
+        <!-- 输入区 -->
         <div class="input-area">
             <input type="text" id="user-input" placeholder="输入你的问题..." />
-            <button id="send-btn" onclick="sendMessage()">发送</button>
             <input type="file" id="file-upload" style="display: none;" onchange="uploadFile()" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.doc">
-            <button onclick="document.getElementById('file-upload').click()" title="上传文档" style="background: #28a745; margin-left: 0; margin-right: 10px;">📎文件上传</button>
-            <button onclick="document.getElementById('review-upload').click()" style="background: #6f42c1;">📋 材料审查</button>
+            <button class="btn btn-secondary btn-upload" onclick="document.getElementById('file-upload').click()" title="上传文档">📎</button>
             <input type="file" id="review-upload" style="display: none;" onchange="reviewFile()" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.doc">
-            <button onclick="clearChat()" style="background: #dc3545;">🗑️ 清空对话</button>
+            <button class="btn btn-secondary btn-review" onclick="document.getElementById('review-upload').click()" title="材料审查">📋</button>
+            <button class="btn" id="send-btn" onclick="sendMessage()">发送</button>
         </div>
     </div>
 
     <script>
         function clearChat() {
             document.getElementById('messages').innerHTML = `
-                <div class="msg bot">你好！我是你的 AI 助手，有什么可以帮你的？</div>
+                <div class="msg bot">你好！我是工大智政 AI 助手 👋<br>我可以帮你查询学校的通知公告，也可以审查材料。有什么可以帮你的？</div>
             `;
         }
-                async function reviewFile() {
+
+        function createBotMsg(content = '') {
+            const div = document.createElement('div');
+            div.className = 'msg bot';
+            div.innerHTML = content;
+            return div;
+        }
+
+        // ============ 审查文件 ============
+        async function reviewFile() {
             const fileInput = document.getElementById('review-upload');
             const file = fileInput.files[0];
             if (!file) return;
@@ -52,18 +381,14 @@
             const formData = new FormData();
             formData.append('file', file);
 
-            // 创建审查结果容器
-            const reviewDiv = document.createElement('div');
-            reviewDiv.className = 'msg bot';
-            reviewDiv.innerHTML = '🔍 <i>正在多维度审查中...</i>';
+            const reviewDiv = createBotMsg('<span class="loading-dots"><span></span><span></span><span></span></span> 正在多维度审查中...');
             messages.appendChild(reviewDiv);
             messages.scrollTop = messages.scrollHeight;
 
             try {
                 const response = await fetch('/review', { method: 'POST', body: formData });
                 const data = await response.json();
-
-                console.log("审查返回数据:", data);  // ⭐ 调试用，看看返回结构
+                console.log("审查返回数据:", data);
 
                 if (!data.review_result) {
                     reviewDiv.innerHTML = `❌ 审查失败：${data.error || '返回数据异常'}`;
@@ -72,82 +397,86 @@
 
                 const r = data.review_result;
 
-                // 兼容旧版纯文本格式
                 if (typeof r === 'string') {
                     reviewDiv.innerHTML = marked.parse(r);
                     return;
                 }
 
-                // ========== 新版结构化报告渲染 ==========
-                let html = `<h3 style="margin:0 0 15px 0;">📋 审查报告</h3>`;
+                let html = `<h3 style="margin:0 0 12px 0;">📋 审查报告</h3>`;
 
-                // 总评分卡片
                 const gradeColor = {
-                    '优秀': '#28a745',
-                    '合格': '#17a2b8',
-                    '需修改': '#ffc107',
-                    '不合格': '#dc3545'
-                }[r.等级] || '#6c757d';
+                    '优秀': 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    '合格': 'linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)',
+                    '需修改': 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+                    '不合格': 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'
+                }[r.等级] || 'linear-gradient(135deg, #6b7280 0%, #4b5563 100%)';
 
-                html += `<div style="background:${gradeColor}; color:white; padding:15px; border-radius:8px; margin-bottom:15px; text-align:center;">
-                    <div style="font-size:32px; font-weight:bold;">${r.总评分}<span style="font-size:16px;">/100</span></div>
-                    <div style="font-size:14px; margin-top:5px;">等级：${r.等级} · 材料类型：${r.材料类型 || '通用'}</div>
+                html += `<div style="background:${gradeColor}; color:white; padding:18px; border-radius:12px; margin-bottom:15px; text-align:center; box-shadow: 0 4px 15px rgba(0,0,0,0.15);">
+                    <div style="font-size:38px; font-weight:bold; letter-spacing:-1px;">${r.总评分}<span style="font-size:16px; opacity:0.8;">/100</span></div>
+                    <div style="font-size:13px; margin-top:6px; opacity:0.95;">等级：${r.等级} · 材料类型：${r.材料类型 || '通用'}</div>
                 </div>`;
 
-                // 硬规则校验结果
                 if (r.硬规则校验 && r.硬规则校验.length > 0) {
                     const errorRules = r.硬规则校验.filter(x => !x.passed && x.severity === 'error');
                     const warningRules = r.硬规则校验.filter(x => !x.passed && x.severity === 'warning');
                     const passedRules = r.硬规则校验.filter(x => x.passed);
 
-                    html += `<div style="margin-bottom:10px; font-size:13px; color:#666;">
+                    html += `<div style="margin-bottom:10px; font-size:13px; color:#64748b; padding:8px 12px; background:#f1f5f9; border-radius:8px;">
                         ⚙️ 硬规则（${r.硬规则得分}/100）：❌ ${errorRules.length} · ⚠️ ${warningRules.length} · ✅ ${passedRules.length}
                     </div>`;
 
                     errorRules.forEach(rule => {
-                        html += `<div style="padding:8px; margin:5px 0; background:#f8d7da; border-left:3px solid #dc3545; font-size:13px;">
-                            <b>❌ ${rule.rule_name}</b>
-                            <div style="color:#721c24; margin-top:3px;">→ ${rule.message}</div>
+                        html += `<div style="padding:10px 14px; margin:6px 0; background:#fef2f2; border-left:4px solid #ef4444; border-radius:6px; font-size:13px;">
+                            <b style="color:#dc2626;">❌ ${rule.rule_name}</b>
+                            <div style="color:#991b1b; margin-top:4px;">→ ${rule.message}</div>
                         </div>`;
                     });
 
                     warningRules.forEach(rule => {
-                        html += `<div style="padding:8px; margin:5px 0; background:#fff3cd; border-left:3px solid #ffc107; font-size:13px;">
-                            <b>⚠️ ${rule.rule_name}</b>
-                            <div style="color:#856404; margin-top:3px;">→ ${rule.message}</div>
+                        html += `<div style="padding:10px 14px; margin:6px 0; background:#fffbeb; border-left:4px solid #f59e0b; border-radius:6px; font-size:13px;">
+                            <b style="color:#d97706;">⚠️ ${rule.rule_name}</b>
+                            <div style="color:#92400e; margin-top:4px;">→ ${rule.message}</div>
                         </div>`;
                     });
 
-                    // 通过的规则折叠
                     if (passedRules.length > 0) {
-                        html += `<details style="margin-top:10px; font-size:12px;">
-                            <summary style="cursor:pointer; color:#28a745;">✅ 已通过的规则（${passedRules.length} 项，点击展开）</summary>
+                        html += `<details style="margin-top:10px; font-size:12.5px;">
+                            <summary style="cursor:pointer; color:#059669; font-weight:500; padding:6px;">✅ 已通过的规则（${passedRules.length} 项，点击展开）</summary>
                             <div style="margin-top:5px;">
-                                ${passedRules.map(x => `<div style="padding:3px 10px; color:#666;">✓ ${x.rule_name}</div>`).join('')}
+                                ${passedRules.map(x => `<div style="padding:3px 10px; color:#64748b;">✓ ${x.rule_name}</div>`).join('')}
                             </div>
                         </details>`;
                     }
                 }
 
-                // 软审查结果
                 if (r.软审查) {
-                    html += `<div style="margin-top:15px;"><b>🧠 软审查</b></div>`;
+                    html += `<div style="margin-top:15px; font-size:14px;"><b>🧠 软审查</b></div>`;
 
                     if (r.软审查.表述规范性) {
-                        html += `<div style="padding:8px; margin:5px 0; background:#f8f9fa; font-size:13px;">
-                            <b>表述规范性：${r.软审查.表述规范性.评分}/100</b>
+                        const score = r.软审查.表述规范性.评分;
+                        const color = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+                        html += `<div style="padding:10px 14px; margin:6px 0; background:#f8fafc; border-radius:8px; font-size:13px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b>表述规范性</b>
+                                <span style="color:${color}; font-weight:bold;">${score}/100</span>
+                            </div>
                             ${r.软审查.表述规范性.问题 && r.软审查.表述规范性.问题.length
-                                ? `<ul style="margin:5px 0 0 20px; padding:0;">${r.软审查.表述规范性.问题.map(p => `<li>${p}</li>`).join('')}</ul>`
-                                : '<div style="color:#28a745; margin-top:3px;">✓ 无问题</div>'}
+                                ? `<ul style="margin:6px 0 0 20px; padding:0; color:#64748b;">${r.软审查.表述规范性.问题.map(p => `<li>${p}</li>`).join('')}</ul>`
+                                : '<div style="color:#10b981; margin-top:4px;">✓ 无问题</div>'}
                         </div>`;
                     }
 
                     if (r.软审查.逻辑一致性) {
-                        html += `<div style="padding:8px; margin:5px 0; background:#f8f9fa; font-size:13px;">
-                            <b>逻辑一致性：${r.软审查.逻辑一致性.评分}/100</b>
+                        const score = r.软审查.逻辑一致性.评分;
+                        const color = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+                        html += `<div style="padding:10px 14px; margin:6px 0; background:#f8fafc; border-radius:8px; font-size:13px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <b>逻辑一致性</b>
+                                <span style="color:${color}; font-weight:bold;">${score}/100</span>
+                            </div>
                             ${r.软审查.逻辑一致性.问题 && r.软审查.逻辑一致性.问题.length
-                                ? `<ul style="margin:5px 0 0 20px; padding:0;">${r.软审查.逻辑一致性.问题.map(p => `<li>${p}</li>`).join('')}</ul>`
-                                : '<div style="color:#28a745; margin-top:3px;">✓ 无问题</div>'}
+                                ? `<ul style="margin:6px 0 0 20px; padding:0; color:#64748b;">${r.软审查.逻辑一致性.问题.map(p => `<li>${p}</li>`).join('')}</ul>`
+                                : '<div style="color:#10b981; margin-top:4px;">✓ 无问题</div>'}
                         </div>`;
                     }
                 }
@@ -163,6 +492,7 @@
             }
         }
 
+        // ============ 上传文件 ============
         async function uploadFile() {
             const fileInput = document.getElementById('file-upload');
             const file = fileInput.files[0];
@@ -176,13 +506,8 @@
             formData.append('file', file);
 
             try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
+                const response = await fetch('/upload', { method: 'POST', body: formData });
                 const data = await response.json();
-
-                // 用 marked 渲染，支持 Markdown 格式的提示信息（规则抽取提示可能有换行）
                 messages.innerHTML += `<div class="msg bot">${marked.parse(data.message || data.error)}</div>`;
                 messages.scrollTop = messages.scrollHeight;
             } catch (error) {
@@ -192,6 +517,7 @@
             }
         }
 
+        // ============ 发送消息（流式） ============
         async function sendMessage() {
             const input = document.getElementById('user-input');
             const sendBtn = document.getElementById('send-btn');
@@ -199,17 +525,14 @@
             const text = input.value.trim();
             if (!text) return;
 
-            // 1. 显示用户消息
             messages.innerHTML += `<div class="msg user">${text}</div>`;
             input.value = '';
             input.disabled = true;
             sendBtn.disabled = true;
-            sendBtn.innerText = '思考中...';
+            sendBtn.innerText = '思考中';
 
-            // 2. 创建 AI 回复的容器
-            const botMsgDiv = document.createElement('div');
-            botMsgDiv.className = 'msg bot';
-            botMsgDiv.innerHTML = '🔍 <i>正在理解你的问题并检索知识库...</i>';
+            const botMsgDiv = createBotMsg('<span class="loading-dots"><span></span><span></span><span></span></span> 正在检索知识库...');
+            botMsgDiv.classList.add('typing-cursor');
             messages.appendChild(botMsgDiv);
             messages.scrollTop = messages.scrollHeight;
 
@@ -219,18 +542,14 @@
             let isParsedSources = false;
 
             try {
-                // 抓取最近两轮（4条消息）的文本作为历史
-                                // ⭐ 抓取历史时，过滤掉拒答废话，且严格限制长度
                 const allMessages = Array.from(document.querySelectorAll('.msg'))
-                    .filter(m => !m.innerText.includes('思考中...') && !m.innerText.includes('正在理解你的问题'))
-                    .slice(-4); // 只取最近4条有效消息
+                    .filter(m => !m.innerText.includes('思考中') && !m.innerText.includes('正在检索'))
+                    .slice(-4);
                 const chatHistory = allMessages.map(m => {
                     let t = m.innerText;
-                    // 剥离来源列表和拒答后缀
                     if (t.includes('📎 参考来源')) t = t.split('📎 参考来源')[0];
                     if (t.includes('📎 检索到的相关材料')) t = t.split('📎 检索到的相关材料')[0];
                     if (t.includes('您可以参考下方我为您检索到的相关材料')) t = t.split('您可以参考下方我为您检索到的相关材料')[0];
-                    // 限制每条消息 200 字，防止历史过长
                     return t.substring(0, 200);
                 }).join('\n---\n');
 
@@ -240,16 +559,15 @@
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder('utf-8');
-                botMsgDiv.innerText = '';
+                botMsgDiv.innerHTML = '';
 
-                   while (true) {
+                while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
 
                     const chunk = decoder.decode(value, { stream: true });
                     buffer += chunk;
 
-                    // 1. 解析来源标记（保持不变）
                     if (!isParsedSources) {
                         if (buffer.includes('__END__')) {
                             const startIdx = buffer.indexOf('__SOURCES__') + 11;
@@ -266,20 +584,17 @@
                         }
                     }
 
-                    // 2. ⭐ 修复：先累加，再替换，最后渲染
                     if (buffer) {
-                        accumulatedText += buffer; // ⭐ 这行是命根子，千万不能漏！
+                        accumulatedText += buffer;
 
-                        // 把 [来源X] 替换成超链接（加上 source && source.url 安全判断）
                         let renderedText = accumulatedText.replace(/\[来源(\d+)\]/g, (match, num) => {
                             const source = sourcesData[parseInt(num) - 1];
-                            if (source && source.url) { // ⭐ 确保 source 存在
-                                return `<a href="${source.url}" target="_blank" style="color:#007bff;">[来源${num}]</a>`;
+                            if (source && source.url) {
+                                return `<a href="${source.url}" target="_blank">[来源${num}]</a>`;
                             }
-                            return match; // 找不到就保持原样，避免报错
+                            return match;
                         });
 
-                        // 只有渲染后的内容非空时，才更新 DOM，防止清空
                         if (renderedText.trim()) {
                             botMsgDiv.innerHTML = marked.parse(renderedText);
                         }
@@ -287,17 +602,16 @@
                         if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 100) {
                             messages.scrollTop = messages.scrollHeight;
                         }
-                        buffer = ''; // 最后才清空 buffer
+                        buffer = '';
                     }
                 }
 
-                // 3. 循环结束后的兜底渲染（同样加安全判断）
                 if (buffer) {
                     accumulatedText += buffer;
                     let renderedText = accumulatedText.replace(/\[来源(\d+)\]/g, (match, num) => {
                         const source = sourcesData[parseInt(num) - 1];
                         if (source && source.url) {
-                            return `<a href="${source.url}" target="_blank" style="color:#007bff;">[来源${num}]</a>`;
+                            return `<a href="${source.url}" target="_blank">[来源${num}]</a>`;
                         }
                         return match;
                     });
@@ -306,29 +620,23 @@
                     }
                 }
 
+                botMsgDiv.classList.remove('typing-cursor');
+
                 if (sourcesData.length > 0) {
-                    // 1. 提取正文里实际引用的来源编号
                     const usedSourceIndices = new Set();
                     const matches = accumulatedText.matchAll(/\[来源(\d+)\]/g);
                     for (const match of matches) {
                         usedSourceIndices.add(parseInt(match[1]));
                     }
 
-                    // 2. 过滤出被引用的来源
                     let finalSources = sourcesData.filter(s => usedSourceIndices.has(s.index));
-
-                    // ⭐ 核心修改：如果正文里一个都没引用（拒答场景），就展示前3个检索到的材料作为“参考”
                     if (finalSources.length === 0) {
                         finalSources = sourcesData.slice(0, 3);
                     }
 
-                    // 3. 渲染来源列表
                     const sourcesDiv = document.createElement('div');
-                    sourcesDiv.style.marginTop = '10px';
-                    sourcesDiv.style.paddingTop = '10px';
-                    sourcesDiv.style.borderTop = '1px dashed #ccc';
-                    sourcesDiv.style.fontSize = '12px';
-                    sourcesDiv.innerHTML = '<b>📎 检索到的相关材料：</b><br>' +
+                    sourcesDiv.className = 'sources';
+                    sourcesDiv.innerHTML = '<b>📎 参考来源：</b><br>' +
                     finalSources.map(s => {
                         const isLocalFile = s.url.startsWith('/preview/');
                         const icon = isLocalFile ? '📄' : '🔗';
@@ -337,13 +645,14 @@
                             const fileName = s.url.replace('/preview/', '');
                             finalUrl = `/preview/${encodeURIComponent(fileName)}`;
                         }
-                        return `<a href="${finalUrl}" target="_blank" style="color:#007bff; text-decoration: none; margin-right: 5px;">${icon} [来源${s.index}] ${s.title}</a>`;
+                        return `<a href="${finalUrl}" target="_blank">${icon} [来源${s.index}] ${s.title}</a>`;
                     }).join('<br>');
                     botMsgDiv.appendChild(sourcesDiv);
                 }
 
             } catch (error) {
                 console.error("流式读取错误:", error);
+                botMsgDiv.classList.remove('typing-cursor');
                 botMsgDiv.innerText = '网络错误或连接被代理拦截，请稍后重试。';
             } finally {
                 input.disabled = false;
