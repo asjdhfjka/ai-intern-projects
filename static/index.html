@@ -417,12 +417,13 @@
                 </div>`;
 
                 if (r.硬规则校验 && r.硬规则校验.length > 0) {
-                    const errorRules = r.硬规则校验.filter(x => !x.passed && x.severity === 'error');
-                    const warningRules = r.硬规则校验.filter(x => !x.passed && x.severity === 'warning');
+                    const errorRules = r.硬规则校验.filter(x => !x.passed && !x.not_applicable && x.severity === 'error');
+                    const warningRules = r.硬规则校验.filter(x => !x.passed && !x.not_applicable && x.severity === 'warning');
                     const passedRules = r.硬规则校验.filter(x => x.passed);
+                    const naRules = r.硬规则校验.filter(x => x.not_applicable);
 
                     html += `<div style="margin-bottom:10px; font-size:13px; color:#64748b; padding:8px 12px; background:#f1f5f9; border-radius:8px;">
-                        ⚙️ 硬规则（${r.硬规则得分}/100）：❌ ${errorRules.length} · ⚠️ ${warningRules.length} · ✅ ${passedRules.length}
+                        ⚙️ 硬规则（${r.硬规则得分}/100）：❌ ${errorRules.length} · ⚠️ ${warningRules.length} · ✅ ${passedRules.length} · ➖ ${naRules.length}
                     </div>`;
 
                     errorRules.forEach(rule => {

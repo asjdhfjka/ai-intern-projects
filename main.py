@@ -40,24 +40,55 @@ DOMAIN_TEMPLATES = {
 
 
 def convert_doc_to_docx(doc_path: str) -> str:
-    """
-    用 LibreOffice 把 .doc 转成 .docx
-    返回转换后的 .docx 路径（失败则返回 None）
-    """
+    """用 LibreOffice 把 .doc 转成 .docx（修复中文路径问题）"""
     import subprocess
+    import uuid
+
     SOFFICE = r"C:\Program Files\LibreOffice\program\soffice.exe"
+
+    # ⭐ 关键修复：先把文件复制成短英文名，绕开中文路径问题
+    temp_dir = os.path.join(os.getcwd(), "temp_convert")
+    os.makedirs(temp_dir, exist_ok=True)
+
+    short_name = f"input_{uuid.uuid4().hex[:8]}.doc"
+    short_doc_path = os.path.join(temp_dir, short_name)
+
+    import shutil
+    shutil.copy2(doc_path, short_doc_path)
+
     docx_path = doc_path.replace(".doc", ".docx")
+    short_docx_path = short_doc_path.replace(".doc", ".docx")
 
     try:
         result = subprocess.run(
             [SOFFICE, "--headless", "--convert-to", "docx",
-             "--outdir", os.path.dirname(doc_path), doc_path],
-            capture_output=True, text=True, timeout=60
+             "--outdir", temp_dir, short_doc_path],
+            capture_output=True, text=True, timeout=180
         )
-        if result.returncode == 0 and os.path.exists(docx_path):
+        print(f"   返回码: {result.returncode}")
+        print(f"   stderr: {result.stderr[:200]}")
+
+        if os.path.exists(short_docx_path):
+            # 转换成功，把结果复制回原位置
+            shutil.copy2(short_docx_path, docx_path)
+            print(f"   ✅ 转换成功")
             return docx_path
+        else:
+            print(f"   ❌ 转换失败：文件未生成")
+    except subprocess.TimeoutExpired:
+        if os.path.exists(short_docx_path):
+            shutil.copy2(short_docx_path, docx_path)
+            return docx_path
+        print(f"   ❌ 超时 180 秒")
     except Exception as e:
-        print(f"⚠️ LibreOffice 转换失败: {e}")
+        print(f"   ❌ 异常: {e}")
+    finally:
+        # 清理临时目录
+        try:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+        except:
+            pass
+
     return None
 
 def smart_docx_loader(docx_path: str, filename: str):
@@ -452,8 +483,9 @@ def route_rules(matched_domain: str, matched_scene: str, all_rules: dict) -> lis
 
     return applicable_rules
 
+
 def execute_hard_rules(facts: dict, rules: list) -> list:
-    """对事实清单执行硬规则校验"""
+    """对事实清单执行硬规则校验（支持"不适用"状态）"""
     import re
     results = []
 
@@ -461,31 +493,84 @@ def execute_hard_rules(facts: dict, rules: list) -> list:
         field = rule.get("field")
         value = facts.get(field, "")
         severity = rule.get("severity", "warning")
-        passed = True
-
         rule_type = rule.get("type")
+        rule_name = rule.get("name", "")
+        passed = True
+        not_applicable = False
 
-        if rule_type == "required":
-            passed = bool(value and str(value).strip())
-        elif rule_type == "regex":
-            passed = bool(value and re.match(rule["pattern"], str(value)))
-        elif rule_type == "keyword":
-            content = facts.get("_full_text", "")
-            passed = any(kw in content for kw in rule.get("keywords", []))
-        elif rule_type == "range":
-            try:
-                num = float(value)
-                passed = rule.get("min", 0) <= num <= rule.get("max", 999)
-            except:
-                passed = False
-        elif rule_type == "enum":
-            # 兼容 values / allowed 两种字段名
-            allowed_values = rule.get("values") or rule.get("allowed") or []
-            passed = str(value) in allowed_values
+        # ⭐ 元规则判断：这类规则约束"评比规则本身"，无法从材料校验
+        meta_keywords = [
+            "公式", "计算方式", "计算规则", "按首次", "定义", "口径",
+            "只计", "只取", "取最高", "计最高", "按50%", "按比例",
+            "兼任", "重复", "同一项目", "同一学年", "累计",
+        ]
+        if any(kw in rule_name for kw in meta_keywords):
+            results.append({
+                "rule_id": rule["id"],
+                "rule_name": rule["name"],
+                "passed": True,
+                "not_applicable": True,
+                "severity": severity,
+                "message": ""
+            })
+            continue
+        # ⭐ 扩展关键词：所有"有条件触发"的规则
+        is_bonus_rule = any(kw in rule_name for kw in [
+            "加分", "获得", "通过", "负责", "参加",
+            "时长", "论文", "专利", "期刊", "项目",
+            "基本分", "公式", "计最高", "计50%", "按50%",
+            "首次考试", "单日最高", "累计",
+        ])
+
+        if not value or str(value).strip() == "":
+            # ⭐ 只要不是 required 类型，字段为空 = 材料里没有这个条目 = 不适用
+            if rule_type == "required":
+                passed = False  # 必填项为空 → 真失败
+            else:
+                not_applicable = True  # 其他类型为空 → 不适用
+        else:
+            if rule_type == "required":
+                passed = bool(value and str(value).strip())
+            elif rule_type == "regex":
+                passed = bool(re.match(rule["pattern"], str(value)))
+            elif rule_type == "keyword":
+                content = facts.get("_full_text", "")
+                passed = any(kw in content for kw in rule.get("keywords", []))
+                # ========== ⭐ 核心修复：range 类型加正则提数字 ==========
+            elif rule_type == "range":
+                num = None
+                # 先尝试直接转
+                try:
+                    num = float(value)
+                except:
+                    # 失败则用正则提取数字
+                    import re
+                    match = re.search(r'-?\d+\.?\d*', str(value))
+                    if match:
+                        num = float(match.group())
+
+                if num is None:
+                    not_applicable = True  # ⭐ 完全没数字，判不适用
+                else:
+                    passed = rule.get("min", 0) <= num <= rule.get("max", 999)
+
+            elif rule_type == "enum":
+                allowed_values = rule.get("values") or rule.get("allowed") or []
+                # ⭐ 空值判不适用，而不是失败
+                if not value or str(value).strip() == "":
+                    not_applicable = True
+                else:
+                    # 宽松匹配：只要 allowed 里有任意一个词出现在 value 里就算通过
+                    passed = any(
+                        str(av) in str(value) or str(value) in str(av)
+                        for av in allowed_values
+                    )
+
         results.append({
             "rule_id": rule["id"],
             "rule_name": rule["name"],
             "passed": passed,
+            "not_applicable": not_applicable,  # ⭐ 新增
             "severity": severity,
             "message": "" if passed else rule.get("message", "规则未通过")
         })
@@ -814,12 +899,14 @@ async def upload_file(file: UploadFile = File(...)):
         print(f"   🧹 过滤短片段后：{len(chunks)} 条")
 
         # 给每个子块加来源前缀
+        # 给每个子块加来源前缀
         for chunk in chunks:
             source_file = chunk.metadata.get("source_file", "未知文件")
             chunk.page_content = f"【文档来源】：{source_file}\n{chunk.page_content}"
-            # ⭐ 过滤掉过短的片段（比如纯标题）
-            chunks = [c for c in chunks if len(c.page_content) > 50]
-            print(f"   🧹 过滤短片段后剩余：{len(chunks)} 条")
+
+        # ⭐ 过滤掉过短的片段（在前缀拼接之后）
+        chunks = [c for c in chunks if len(c.page_content) > 50]
+        print(f"   🧹 过滤短片段后剩余：{len(chunks)} 条")
 
         # 入库
         if chunks:
@@ -1106,7 +1193,6 @@ async def review_file(file: UploadFile = File(...)):
 
         # ========== 7. 综合评分 ==========
         # ⭐ 三档扣分制
-        # ⭐ 三档扣分制
         if hard_results:
             base_score = 100
             deduction = 0
@@ -1115,6 +1201,9 @@ async def review_file(file: UploadFile = File(...)):
             warning_count = 0
 
             for r in hard_results:
+                # ⭐ 跳过"不适用"的规则
+                if r.get("not_applicable"):
+                    continue
                 if not r["passed"]:
                     sev = r["severity"]
                     if sev == "critical":
