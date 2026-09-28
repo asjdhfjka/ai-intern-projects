@@ -26,10 +26,10 @@
         <div class="input-area">
             <input type="text" id="user-input" placeholder="输入你的问题..." />
             <button id="send-btn" onclick="sendMessage()">发送</button>
-            <input type="file" id="file-upload" style="display: none;" onchange="uploadFile()" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg">
+            <input type="file" id="file-upload" style="display: none;" onchange="uploadFile()" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.doc">
             <button onclick="document.getElementById('file-upload').click()" title="上传文档" style="background: #28a745; margin-left: 0; margin-right: 10px;">📎文件上传</button>
             <button onclick="document.getElementById('review-upload').click()" style="background: #6f42c1;">📋 材料审查</button>
-            <input type="file" id="review-upload" style="display: none;" onchange="reviewFile()" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg">
+            <input type="file" id="review-upload" style="display: none;" onchange="reviewFile()" accept=".pdf,.txt,.docx,.png,.jpg,.jpeg,.doc">
             <button onclick="clearChat()" style="background: #dc3545;">🗑️ 清空对话</button>
         </div>
     </div>

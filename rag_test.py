@@ -153,6 +153,8 @@ def build_vector_db():
             doc.metadata["source_title"] = meta.get("title", filename)
             doc.metadata["department"] = meta.get("department", "未知部门")
             doc.metadata["publish_date"] = meta.get("publish_date", "")
+            if filename and not doc.page_content.startswith(f"【{filename}】"):
+                doc.page_content = f"【{filename}】\n{doc.page_content}"
 
         all_documents.extend(documents)
 
@@ -198,8 +200,14 @@ def build_vector_db():
                 child_chunk.metadata["parent_id"] = parent_id
                 child_chunk.metadata["parent_content"] = parent_chunk.page_content
                 chunks.append(child_chunk)
+    # ⭐ 过滤掉过短的片段（比如纯标题）
+    chunks = [c for c in chunks if len(c.page_content) > 50]
+    print(f"   🧹 过滤短片段后剩余：{len(chunks)} 条")
+    print(f"   切分完成（过滤前）：共 {len(chunks)} 个子块")
 
-    print(f"   切分完成：共 {len(chunks)} 个子块（用于检索）")
+    # ⭐ 过滤掉过短的片段（在前缀拼接之前，纯内容长度 < 150 字）
+    chunks = [c for c in chunks if len(c.page_content) > 150]
+    print(f"   🧹 过滤短片段后：共 {len(chunks)} 个子块")
 
     # 给每个子块加来源前缀（方便向量检索命中）
     for chunk in chunks:

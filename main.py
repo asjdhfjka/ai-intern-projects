@@ -38,6 +38,28 @@ DOMAIN_TEMPLATES = {
     "助学贷款": "申请资格、家庭经济困难认定、还款方式",
 }
 
+
+def convert_doc_to_docx(doc_path: str) -> str:
+    """
+    用 LibreOffice 把 .doc 转成 .docx
+    返回转换后的 .docx 路径（失败则返回 None）
+    """
+    import subprocess
+    SOFFICE = r"C:\Program Files\LibreOffice\program\soffice.exe"
+    docx_path = doc_path.replace(".doc", ".docx")
+
+    try:
+        result = subprocess.run(
+            [SOFFICE, "--headless", "--convert-to", "docx",
+             "--outdir", os.path.dirname(doc_path), doc_path],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode == 0 and os.path.exists(docx_path):
+            return docx_path
+    except Exception as e:
+        print(f"⚠️ LibreOffice 转换失败: {e}")
+    return None
+
 def smart_docx_loader(docx_path: str, filename: str):
     """Word 图文混排智能解析：解压 zip 提取图片并 OCR"""
     try:
@@ -515,6 +537,9 @@ async def chat_stream(user_input: str, history: str = ""):
                注意：如果用户的最新问题本身已经**包含了完整的语义**（如"那学校的学费怎么交"里已经明确了"学校的学费"），不要画蛇添足加"学生所在学校的"这种冗余前缀，直接用原意即可。
             4. 如果用户问的是“什么时候”、“时间”、“日期”，请在改写后的问题中明确加上“{now_str.split('年')[0]}年”或“最新”等时间限定词。
             5. 只输出改写后的问题，不要回答，不要解释。
+            6. ⭐【对比类问题】如果用户问"A 和 B 分别是什么"、"A 与 B 有什么不同"，请把问题拆成两个独立子问题：
+            - 例如："上半年和下半年报名时间对比" → "2026年上半年计算机等级考试报名时间 和 2026年下半年计算机等级考试报名时间"
+            - 保留两个主体，不要丢掉任何一个
             历史对话：
             {history}
             最新问题：{user_input}
@@ -548,12 +573,17 @@ async def chat_stream(user_input: str, history: str = ""):
             """判断单条资料是否与问题相关"""
             judge_prompt = f"""判断以下资料是否与问题相关。只输出 YES 或 NO，不要解释。
 
-        【问题】：{search_query}
+            【重要规则】：
+            1. 如果资料中提到了问题里的**核心实体或关键词**（如"报名费"、"准考证"、"收费标准"、"打印"等），即使资料讲的是其他内容，也应输出 YES。
+            2. 如果问题是"A 和 B 分别是什么"这种**对比类问题**，只要资料涉及 A 或 B 任一侧，就输出 YES。
+            3. 不要因为资料中没有直接出现"是什么"、"多少"这种问法就判 NO。
 
-        【资料】：
-        {doc.page_content[:400]}
+            【问题】：{search_query}
 
-        只输出 YES 或 NO。"""
+            【资料（全文）】：
+            {doc.page_content[:1500]}
+
+            只输出 YES 或 NO。"""
             try:
                 judge_res = await client.chat.completions.create(
                     model="ep-20260919155615-h2mfv",
@@ -676,7 +706,7 @@ async def chat_stream(user_input: str, history: str = ""):
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     # ========== 1. 安全防线：文件类型检查 ==========
-    if not file.filename.endswith((".pdf", ".txt", ".docx", ".png", ".jpg", ".jpeg")):
+    if not file.filename.endswith((".pdf", ".txt", ".docx", ".doc", ".png", ".jpg", ".jpeg")):
         return {"error": "❌ 仅支持 PDF、TXT、Word、PNG、JPG 文件"}
 
     # ========== 2. 安全防线：文件大小限制（20MB） ==========
@@ -724,10 +754,24 @@ async def upload_file(file: UploadFile = File(...)):
             documents = loader.load()
         elif file.filename.endswith(".docx"):
             documents = smart_docx_loader(file_location, file.filename)
+
+        elif file.filename.endswith(".doc"):
+            # ⭐ 先转成 .docx，再走常规流程
+            print(f"📝 检测到旧版 .doc，正在转换为 .docx...")
+            converted = convert_doc_to_docx(file_location)
+            if not converted:
+                return {"error": "❌ 旧版 .doc 转换失败，请另存为 .docx 后重试"}
+            documents = smart_docx_loader(converted, file.filename)
+            # 清理临时转换文件
+            if os.path.exists(converted):
+                os.remove(converted)
         # 打标签
         for doc in documents:
             doc.metadata["file_hash"] = file_hash
             doc.metadata["source_file"] = file.filename
+            # ⭐ 新增：把文件名拼到正文开头，防止标题污染
+            if file.filename and not doc.page_content.startswith(f"【{file.filename}】"):
+                doc.page_content = f"【{file.filename}】\n{doc.page_content}"
 
         # ========== 父子分块（Small-to-Big） ==========
         # 父块：1500字，用于给大模型看完整上下文
@@ -765,9 +809,17 @@ async def upload_file(file: UploadFile = File(...)):
                     chunks.append(child_chunk)
 
         # 给每个子块加来源前缀
+        # ⭐ 过滤掉过短的片段（在前缀拼接之前）
+        chunks = [c for c in chunks if len(c.page_content) > 150]
+        print(f"   🧹 过滤短片段后：{len(chunks)} 条")
+
+        # 给每个子块加来源前缀
         for chunk in chunks:
             source_file = chunk.metadata.get("source_file", "未知文件")
             chunk.page_content = f"【文档来源】：{source_file}\n{chunk.page_content}"
+            # ⭐ 过滤掉过短的片段（比如纯标题）
+            chunks = [c for c in chunks if len(c.page_content) > 50]
+            print(f"   🧹 过滤短片段后剩余：{len(chunks)} 条")
 
         # 入库
         if chunks:
